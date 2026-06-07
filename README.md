@@ -1,155 +1,267 @@
-# Agnes AI Gateway 本地控制台
+# Agnes AI Desktop
 
-一个**零依赖**的轻量级 Node.js Web 控制台，调用 [Agnes AI Gateway](https://apihub.agnes-ai.com) 提供的视频/图像生成能力，专为国内网络环境优化（自带视频反向代理，绕过 `storage.googleapis.com` 访问限制）。
+一个基于 Electron + React 的 macOS AI 桌面客户端，集成 **AI 聊天对话**、**AI 图像生成**、**AI 视频生成** 三大核心能力，支持 AI Agent 工具调用。
 
-- **视频生成**：调用 `agnes-video-v2.0`，支持文生视频、图生视频、多图视频、关键帧动画
-- **图像生成**：调用 `agnes-image-2.1-flash`，支持文生图、图生图（已修复参数结构以保留原图构图）、构图保留、高密度优化
-- **AI 聊天**：多模型 SSE 流式对话，自动保存历史
-- **模型管理**：从官方拉取模型列表，自定义默认模型
+> 包名: `moyana-ai-desktop` · 版本: v2.0.0 · App ID: `com.moyana.ai.desktop`
 
-## ✨ 特性
+---
 
-- 🚀 **零依赖**：纯 Node.js 标准库，无需 `npm install`
-- 🎬 **完整视频工作流**：异步任务提交 → 3 秒轮询 → 自动重试 → 视频播放/下载
-- 🎨 **完整图像工作流**：同步生成 → 即时预览 → 本地下载
-- 💬 **AI 聊天**：多模型流式对话，Ctrl+Enter 发送，历史持久化
-- 📐 **比例与尺寸智能匹配**：视频 16:9/9:16/1:1/4:3/3:4，图像 9 种比例预设；**支持上传参考图时自动读取并应用原图分辨率，手动调整宽高时自动取消常用尺寸的选中状态**。
-- 🖼️ **本地图片支持**：粘贴/拖拽/选择本地图片，自动转 Base64 上送
-- 🌏 **国内网络友好**：内置 `/video-proxy` 反向代理，破解 GCS 视频被墙问题
-- 🔑 **API Key 持久化**：自动保存到 `key.txt` + `localStorage` 双重存储
-- 🔁 **智能重试与状态防残留**：视频和图像结果页签切换时，右侧卡片自适应隐藏，轮询区分服务端临时错误（最多 10 次）与网络错误（最多 5 次）
+## ✨ 功能特性
 
-## 📦 项目结构
+### 🤖 AI 聊天
+- 多会话管理（创建、删除、重命名、会话级工作目录）
+- Ask / Agent 双模式 — Ask 纯对话，Agent 可自动调用工具
+- 支持多种聊天模型切换（已配置的 `chat` 类型模型）
+- 流式输出、实时渲染 Markdown（代码高亮、表格等）
+- 工具调用状态面板（实时显示搜索、文件操作等进度）
+- 网页搜索结果引用来源折叠展示
+- Token 用量统计与消息占比分析
 
-| 文件 | 作用 |
+### 🖼️ AI 图像生成
+- 文本生图 (txt2img) / 图生图 (img2img) 双模式
+- 拖拽上传参考图片
+- 5 种预设画面比例 + 自定义分辨率
+- 推理步数（10-50）、随机种子控制
+- 生成历史侧边栏（缩略图列表）
+
+### 🎬 AI 视频生成
+- 文本生视频 / 图片生视频 / 多图视频 / 关键帧动画 四种模式
+- 异步任务 + 轮询进度 + 状态标签
+- 帧率（24fps）和帧数（121帧）
+- 生成完成后自动播放
+- 网络/服务器错误自动重试
+
+### 🔧 AI Agent 工具
+内置 7 个 Agent 工具，可在对话中由 LLM 自动调用：
+
+| 工具 | 说明 |
 |------|------|
-| `server.js` | 基于 `http` 标准库的本地反向代理 + 静态服务 |
-| `index.html` | 单页 Dashboard（CSS / JS 全内联，无框架） |
-| `start.bat` | Windows 一键启动脚本 |
-| `key.txt` | 本地 API Key 持久化文件（**已加入 .gitignore**） |
-| `config.json` | 用户配置（模型列表/默认模型，**已加入 .gitignore**） |
-| `AI Gateway, Free AI API & AI Applications.md` | Agnes API 官方文档备份 |
+| `read_file` | 读取文件内容，支持行范围分页 |
+| `write_file` | 创建/修改文件，自动创建父目录 |
+| `list_directory` | 浏览目录结构，跳过无关目录 |
+| `search_code` | 基于 ripgrep 的代码搜索 |
+| `run_command` | 执行 Shell 命令（路径安全校验） |
+| `web_search` | 多引擎互联网搜索（四级 fallback） |
+| `web_fetch` | 抓取网页内容并提取文本摘要 |
+
+### 🎨 主题系统
+- 亮色 / 暗色 / 跟随系统 三种模式
+- 主题偏好持久化到本地
+
+### ⚙️ 设置管理
+- 模型可视化 CRUD（支持 Agnes / Ollama / OpenAI / Custom 服务商）
+- 搜索引擎配置（DuckDuckGo / Tavily）
+- 文件保存目录选择
+
+---
+
+## 🛠️ 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 桌面框架 | Electron 29 |
+| UI 框架 | React 18 + TypeScript |
+| 构建工具 | Vite 5 |
+| 样式方案 | Tailwind CSS 3 |
+| 状态管理 | Zustand 4 |
+| 本地存储 | better-sqlite3 |
+| LLM 工具链 | LangChain Core |
+| Markdown 渲染 | marked |
+| 图标库 | lucide-react |
+| 网页抓取 | cheerio |
+| 桌面打包 | electron-builder |
+
+---
 
 ## 🚀 快速开始
 
-### 前置条件
+### 环境要求
 
-- 安装 Node.js ≥ 14（无需任何 npm 包）
-- 已获取 [Agnes AI Gateway API Key](https://apihub.agnes-ai.com)
+- macOS (Apple Silicon)
+- Node.js >= 18
 
-### 启动
+### 安装依赖
 
 ```bash
-# 克隆仓库
-git clone https://github.com/zhting/agnesAI.git
-cd agnesAI
-
-# 启动服务
-node server.js
-#  ─ 或 Windows 用户直接双击 start.bat
+npm install
 ```
 
-服务监听 `http://127.0.0.1:3000`，浏览器打开即可。
+### 开发模式
 
-### 配置 API Key
+同时启动 Vite HMR 开发服务器和 Electron：
 
-在页面 ⚙️ **管理** 页填写 API Key 并保存，系统自动保存到本地 `key.txt`，下次启动自动回填。
+```bash
+# 终端 1：启动 Vite 开发服务器（端口 5173）
+npm run dev
 
-## 📐 比例选择
+# 终端 2：启动 Electron（自动连接 Vite 开发服务器）
+npm start
+```
 
-### 视频生成
-打开高级参数即可看到「画面比例」下拉，支持：
+> 设置环境变量 `VITE_DEV_SERVER=http://localhost:5173` 可显式指定开发服务器地址。
 
-| 比例 | 对应分辨率 |
-|------|-----------|
-| 16:9 横屏 | 1280 × 720 |
-| 9:16 竖屏 | 720 × 1280 |
-| 1:1 正方形 | 1024 × 1024 |
-| 4:3 横图 | 1024 × 768 |
-| 3:4 竖图 | 768 × 1024 |
-| 自定义 | 手动设置 |
+### 生产构建
 
-选择比例后宽高自动填充，也可随时手动修改。
+```bash
+# 构建前端资源
+npm run build
 
-### 图像生成
-图像提供 9 种比例预设（1:1 / 3:4 / 4:3 / 9:16 / 16:9 / 9:21 / 21:9 / 2:3 / 3:2），选择后自定义宽高自动填充。
+# 启动 Electron（加载 dist/ 中的构建产物）
+npm start
+```
 
-## 🎬 视频生成使用说明
+### macOS 打包
 
-| 模式 | 必填字段 | 说明 |
-|------|----------|------|
-| **文本生成视频** | Prompt | 纯文字描述即可生成视频 |
-| **图片生成视频** | Prompt + 参考图 | 让一张静态图动起来 |
-| **多图视频** | Prompt + 多张参考图 | 融合多张图的元素生成视频 |
-| **关键帧动画** | Prompt + 2 张及以上图 | 首张为起始帧，末张为结束帧，中间自动过渡 |
+```bash
+npm run pack
+# 输出到 release/ 目录（DMG + ZIP）
+```
 
-**高级参数**：模型 / 比例 / 帧数 / 帧率 / 推理步数 / 随机种子 / 负向提示词。
+---
 
-> ⚠️ `num_frames` 必须满足 `8n + 1` 的格式（如 81、121、161、241、441），且 ≤ 441。
+## 📁 项目结构
 
-任务提交后页面以 3 秒为间隔轮询进度，完成后在右侧面板自动播放并提供下载按钮。
+```
+agnesAI/
+├── main.js                  # Electron 主进程（窗口管理、IPC、SQLite、API 代理）
+├── preload.js               # contextBridge 暴露 API 给渲染进程
+├── index.html               # Vite 入口 HTML
+├── package.json
+├── vite.config.js
+├── tailwind.config.js
+├── postcss.config.js
+│
+├── src/                     # React 前端源码
+│   ├── main.tsx             # React 入口
+│   ├── App.tsx              # 根组件
+│   ├── index.css            # 全局样式 + Tailwind + 主题变量
+│   ├── theme.ts             # 主题管理（亮色/暗色/随系统）
+│   │
+│   ├── components/
+│   │   ├── Layout.tsx       # 三栏布局容器
+│   │   ├── Sidebar.tsx      # 左侧导航栏
+│   │   ├── RightSidebar.tsx # 通用可折叠右侧面板
+│   │   ├── MarkdownContent.tsx
+│   │   ├── ImageUploader.tsx
+│   │   ├── SizePicker.tsx
+│   │   ├── chat/
+│   │   │   ├── SessionList.tsx
+│   │   │   ├── ChatHeader.tsx
+│   │   │   ├── MessageList.tsx
+│   │   │   ├── MessageInput.tsx
+│   │   │   └── ChatSidebar.tsx
+│   │   ├── image/
+│   │   │   └── ImageSidebar.tsx
+│   │   └── video/
+│   │       ├── MultiImageUploader.tsx
+│   │       └── VideoSidebar.tsx
+│   │
+│   ├── hooks/
+│   │   └── useStreamChat.ts  # 流式聊天 Hook
+│   │
+│   ├── stores/
+│   │   ├── appStore.ts       # 视图路由状态
+│   │   ├── chatStore.ts      # 聊天会话与消息管理
+│   │   ├── imageStore.ts     # 图像生成参数
+│   │   └── videoStore.ts     # 视频生成参数
+│   │
+│   └── views/
+│       ├── DashboardView.tsx # 工作台总览
+│       ├── ChatView.tsx      # 聊天对话
+│       ├── ImageView.tsx     # 图像生成
+│       ├── VideoView.tsx     # 视频生成
+│       └── SettingsView.tsx  # 设置
+│
+├── utils/
+│   ├── toolRegistry.js       # AI 工具注册中心
+│   ├── langchainAgent.js     # LangChain 工具适配
+│   ├── tools/
+│   │   ├── fileTools.js      # 文件操作工具
+│   │   ├── shellTools.js     # Shell 执行工具
+│   │   └── webTools.js       # 网络搜索工具
+│
+├── build/
+│   └── icon.icns             # macOS 应用图标
+│
+├── dist/                     # Vite 构建产物
+└── release/                  # electron-builder 打包输出
+```
 
-## 🎨 图像生成使用说明
+---
 
-| 模式 | 说明 |
-|------|------|
-| **文本生成图像** | 纯文字描述生成图像 |
-| **图像生成图像** | 基于原图 + Prompt 做风格化/重绘 |
-| **结构/构图保留** | 严格沿用原图构图，重绘内容 |
-| **高信息密度优化** | 增强细节，适合电商主图、海报 |
+## 🏗️ 架构概述
 
-> 支持在提示词中使用 "the first image" / "the second image" 等自然语言描述多图角色。
+```
+┌─────────────────────────────────────────────────────┐
+│                 Electron 主进程 (main.js)             │
+│  ┌──────────┐  ┌────────────┐  ┌─────────────────┐  │
+│  │ 窗口管理  │  │ IPC Handler│  │  API Proxy      │  │
+│  │          │  │ (19 个)    │  │  (fetch → Agnes) │  │
+│  └──────────┘  └────────────┘  └─────────────────┘  │
+│                     │          ┌──────────────────┐  │
+│                     │          │  SQLite (5 张表)  │  │
+│                     │          │  agnes_data.db    │  │
+│                     │          └──────────────────┘  │
+│                     │          ┌──────────────────┐  │
+│                     │          │  搜索引擎         │  │
+│                     │          │  四级 fallback    │  │
+│                     │          └──────────────────┘  │
+└─────────────────────┼───────────────────────────────┘
+                      │ IPC (contextBridge)
+┌─────────────────────┼───────────────────────────────┐
+│              渲染进程 (Vite + React)                  │
+│  ┌──────────┐  ┌────────────────────────────────┐   │
+│  │ React UI │  │  window.electronAPI (preload)  │   │
+│  │ Zustand  │  │  DB & API 通过此桥转发主进程    │   │
+│  └──────────┘  └────────────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+```
 
-## 🖼️ 本地图片上传方式
+渲染进程**不直接**访问 Node.js API 或发送 HTTP 请求。所有操作通过 `window.electronAPI`（contextBridge 注入）代理到主进程处理。
 
-任意"参考图片 URL"输入框均支持三种方式注入本地图片（自动转 Base64）：
+---
 
-1. 点击右侧 📁 按钮选择文件
-2. **直接在输入框内 Ctrl+V 粘贴**（图片或截图）
-3. **直接拖拽图片文件到输入框**
+## ⚙️ 配置
 
-> Base64 数据会保留完整的 `data:image/xxx;base64,` 前缀进行上送，以符合 `agnes-image-2.1-flash` 等图像模型对于 Data URI 的解析规范。
+### 环境变量
 
-## 🛠️ 架构说明
+| 变量 | 用途 | 默认值 |
+|------|------|--------|
+| `VITE_DEV_SERVER` | 指定 Vite 开发服务器 URL | 无（加载 `dist/`） |
+| `DEBUG_AGNES` | 调试模式，自动打开 DevTools | 无 |
 
-### 服务端 `server.js`
+### SQLite 数据库 (`agnes_data.db`)
 
-单文件 HTTP 服务，4 条路由：
+| 表 | 说明 |
+|----|------|
+| `config` | 键值配置（主题、保存路径、API Key 等） |
+| `chat_sessions` | 聊天会话 |
+| `chat_messages` | 聊天消息 |
+| `media_tasks` | 媒体生成任务历史 |
+| `llm_models` | 多模型配置 |
 
-| 路由 | 说明 |
-|------|------|
-| `GET /` 或 `/index.html` | 返回前端页面 |
-| `GET / POST /api/key` | 读 / 写本地 `key.txt` |
-| `GET / POST /api/config` | 读 / 写用户配置（模型列表/默认模型） |
-| `GET /video-proxy?url=...` | HTTPS 反向代理 `storage.googleapis.com` 上的视频（绕墙） |
-| `* /v1/*` | 反向代理至 `https://apihub.agnes-ai.com/v1/*`，自动注入 `Authorization: Bearer {key}` |
+预置默认模型：
 
-`/v1/*` 代理特点：
-- 优先读取请求头 `X-Api-Key`，缺失时回退本地 `key.txt`
-- 自动剥离 `?_t=...` 防缓存参数避免上游路由异常
-- 上游非 2xx 时统一包装成 `{error: {message}}` JSON 返回
+| 模型 ID | 类型 |
+|---------|------|
+| `agnes-2.0-flash` | chat |
+| `agnes-image-2.1-flash` | image |
+| `agnes-video-v2.0` | video |
 
-### 前端 `index.html`
+---
 
-- 无任何框架的单页应用，所有 CSS / JS 内联
-- 左右分栏布局：左侧表单，右侧实时预览/结果
-- 一级页签：视频 / 图像 / 聊天 / 管理
-- 二级页签：根据模式动态显示 / 隐藏参考图字段
-- 轮询：`3s` 间隔；服务端临时错误（如 `division by zero`）重试 10 次；网络错误重试 5 次
-- 视频/图像播放走 `/video-proxy` 中转，避免直接访问 GCS 被墙
-- 聊天支持 SSE 流式输出，历史保存至 localStorage
+## 📦 IPC 通道一览
 
-## 🔒 安全提示
+**invoke/handle（请求-响应，18 个）**
 
-- 不要把 `key.txt`、`.env` 等含密文件提交到公共仓库。本仓库已通过 `.gitignore` 排除
-- 服务仅监听 `127.0.0.1`，默认只在本机可访问
-- 若需局域网共享，请将 `server.js` 中 `server.listen(PORT, '127.0.0.1', ...)` 的地址改为 `'0.0.0.0'`，并自行评估暴露风险
+`get-config`, `set-config`, `db-get-models`, `db-add-model`, `db-delete-model`, `db-get-sessions`, `db-add-session`, `db-delete-session`, `db-delete-messages-after`, `db-get-messages`, `db-add-message`, `db-get-media-tasks`, `db-delete-media-task`, `api-get-models`, `api-generate-image`, `api-generate-video`, `api-poll-video`, `select-save-directory`
 
-## 📚 参考
+**on/send（事件推送，2 个）**
 
-- [Agnes AI 官方接口文档](https://apihub.agnes-ai.com)
-- 仓库内置文档：`AI Gateway, Free AI API & AI Applications.md`
+`chat-request`（流式聊天 SSE 转发）、`show-in-folder`（在 Finder 中显示文件）
 
-## 📜 License
+---
 
-MIT
+## 📄 许可
+
+本项目基于 MIT 许可证开源。

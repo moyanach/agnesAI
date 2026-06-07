@@ -3,6 +3,8 @@ key.txt
 
 # 用户本地配置（模型选择、模型列表缓存）
 config.json
+dist/
+release/
 
 # Node
 node_modules/
@@ -25,3 +27,8 @@ desktop.ini
 
 # Claude Code 本地工作目录
 .claude/
+CLAUDE.md
+
+AGENTS.md
+
+.workbuddy/

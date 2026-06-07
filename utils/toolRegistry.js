@@ -1,0 +1,194 @@
+/**
+ * ToolRegistry — 主进程工具注册与执行层
+ *
+ * 设计原则：
+ * 1. 松耦合：通过统一的 name/description/parameters/execute 四元组抽象
+ * 2. 安全：工具执行带有效范围限制（cwd 限定在项目目录内）
+ * 3. 增强：基于 LangChain StructuredTool 构建，支持 schema 校验、结构化输出
+ *
+ * 所有工具的云原生定义、schema 校验、exec 逻辑均封装在 utils/tools/ 下。
+ * 本模块负责集中注册并提供统一的 Function Calling 接口。
+ */
+
+const { ReadFileTool, WriteFileTool, ListDirectoryTool, SearchCodeTool } = require("./tools/fileTools");
+const { WebSearchTool, WebFetchTool } = require("./tools/webTools");
+const { RunCommandTool } = require("./tools/shellTools");
+
+class ToolRegistry {
+  constructor() {
+    /** @type {Map<string, {name:string, description:string, parameters:object, execute:Function}>} */
+    this._tools = new Map();
+    /** @type {Record<string, any>} */
+    this._context = {};
+  }
+
+  /**
+   * 设置工具执行上下文
+   */
+  setContext(key, value) {
+    this._context[key] = value;
+  }
+
+  /**
+   * 获取工具执行上下文
+   */
+  getContext() {
+    return { ...this._context };
+  }
+
+  /**
+   * 注册一个工具
+   */
+  register(tool) {
+    if (!tool.name || !tool.description || !tool.execute) {
+      throw new Error(
+        `工具注册失败: 需要 name, description, execute (got: ${Object.keys(tool).join(", ")})`,
+      );
+    }
+    this._tools.set(tool.name, tool);
+  }
+
+  /**
+   * 检查指定工具是否已注册
+   */
+  has(name) {
+    return this._tools.has(name);
+  }
+
+  /**
+   * 获取 LLM Function Calling 所需的工具定义列表 (OpenAI-compatible)
+   * @returns {Array<{type:string, function:{name:string, description:string, parameters:object}}>}
+   */
+  getToolDefinitions() {
+    const defs = [];
+    for (const tool of this._tools.values()) {
+      defs.push({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      });
+    }
+    return defs;
+  }
+
+  /**
+   * 获取工具列表摘要（用于 system prompt 描述）
+   */
+  getToolSummaries() {
+    return Array.from(this._tools.values()).map((t) => ({
+      name: t.name,
+      description: t.description,
+    }));
+  }
+
+  /**
+   * 执行指定工具
+   * @param {string} name
+   * @param {object} args
+   * @param {object} [context]
+   * @returns {Promise<{success:boolean, data?:any, error?:string}>}
+   */
+  async execute(name, args, context = {}) {
+    const tool = this._tools.get(name);
+    if (!tool) {
+      return { success: false, error: `未找到工具: ${name}` };
+    }
+    try {
+      const resolvedContext = { ...this.getContext(), ...context };
+      const result = await tool.execute(args, resolvedContext);
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, error: err.message || String(err) };
+    }
+  }
+
+  /**
+   * 获取所有注册的工具数量
+   */
+  get size() {
+    return this._tools.size;
+  }
+}
+
+// ─── 实例化全局单例 ──────────────────────────────────────────
+
+const toolRegistry = new ToolRegistry();
+
+// ─── 转换 LangChain StructuredTool 为 OpenAI 函数定义 ──────
+
+function zodShapeToJsonSchema(zodObj) {
+  // StructuredTool.schema 是 @standard-schema/spec 兼容对象，有 toJSONSchema() 方法
+  if (typeof zodObj?.toJSONSchema === "function") {
+    const jsonSchema = zodObj.toJSONSchema();
+    // 转换：将有 default 值的参数从 required 中移除（LLM 不填也会用默认值）
+    const properties = {};
+    const required = [];
+    if (jsonSchema.properties) {
+      for (const [key, prop] of Object.entries(jsonSchema.properties)) {
+        properties[key] = {
+          type: prop.type || "string",
+          description: prop.description || "",
+        };
+        // 只有没有 default 值的参数才标记为 required
+        if (prop.default === undefined) {
+          required.push(key);
+        }
+      }
+    }
+    return {
+      type: jsonSchema.type || "object",
+      properties,
+      required,
+    };
+  }
+  // Fallback: 返回空 schema
+  return { type: "object", properties: {}, required: [] };
+}
+
+/**
+ * 从 LangChain StructuredTool 创建注册条目
+ */
+function fromLangChainTool(lcTool) {
+  const parameters = zodShapeToJsonSchema(lcTool.schema);
+  return {
+    name: lcTool.name,
+    description: lcTool.description,
+    parameters,
+    execute: async (args, context = {}) => {
+      // StructuredTool 的 _call 方法直接处理参数并返回 JSON string
+      // 传入 workDir 到 _call 方法
+      const workDir = context?.workDir || null;
+      const resultStr = await lcTool._call({ ...args, __workDir: workDir });
+      try {
+        return JSON.parse(resultStr);
+      } catch {
+        return { data: resultStr };
+      }
+    },
+  };
+}
+
+// ─── 注册所有增强工具 ────────────────────────────────────────
+
+const ALL_TOOLS = [
+  fromLangChainTool(new ReadFileTool()),
+  fromLangChainTool(new WriteFileTool()),
+  fromLangChainTool(new ListDirectoryTool()),
+  fromLangChainTool(new SearchCodeTool()),
+  fromLangChainTool(new RunCommandTool()),
+  fromLangChainTool(new WebFetchTool()),
+];
+
+// web_search 需要一个可选的 searchConfig，注册时不传参使用默认配置
+ALL_TOOLS.push(fromLangChainTool(new WebSearchTool()));
+
+for (const tool of ALL_TOOLS) {
+  toolRegistry.register(tool);
+}
+
+console.log(`[toolRegistry] 已注册 ${toolRegistry.size} 个工具: ${ALL_TOOLS.map(t => t.name).join(", ")}`);
+
+module.exports = { toolRegistry };
