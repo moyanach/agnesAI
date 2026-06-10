@@ -1,4 +1,4 @@
-# Agnes AI Desktop
+# MYN AI Desktop
 
 一个基于 Electron + React 的 macOS AI 桌面客户端，集成 **AI 聊天对话**、**AI 图像生成**、**AI 视频生成** 三大核心能力，支持 AI Agent 工具调用。
 
