@@ -1,0 +1,143 @@
+import React, { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useChatStore } from '@/stores/chatStore';
+
+export const ContextCard: React.FC = () => {
+  const [isOpen, setIsOpen] = useState(true);
+  const { contextMetrics, messages, activeSessionId } = useChatStore();
+
+  const activeMsgs = activeSessionId ? messages[activeSessionId] || [] : [];
+
+  // 如果主进程尚未推送指标，提供基于当前消息数量的初始默认估算
+  const metrics = contextMetrics || {
+    totalLimit: 1000000,
+    totalLimitFormatted: '1M',
+    usedTokens: Math.max(120, activeMsgs.length * 80),
+    usedTokensFormatted: activeMsgs.length > 0 ? `${(activeMsgs.length * 0.1).toFixed(1)}k` : '0.1k',
+    usedPercent: activeMsgs.length > 0 ? Math.min(100, parseFloat(((activeMsgs.length * 80 / 1000000) * 100).toFixed(1))) : 0.1,
+    breakdown: {
+      messages: {
+        tokens: activeMsgs.length * 60,
+        formatted: `${(activeMsgs.length * 0.06).toFixed(1)}k`,
+        percent: 0.1,
+        color: '#3b82f6',
+        label: 'Messages',
+      },
+      systemTools: {
+        tokens: 15100,
+        formatted: '15.1k',
+        percent: 1.5,
+        color: '#f97316',
+        label: 'System tools',
+      },
+      systemPrompt: {
+        tokens: 6300,
+        formatted: '6.3k',
+        percent: 0.6,
+        color: '#22c55e',
+        label: 'System prompt',
+      },
+      skills: {
+        tokens: 5600,
+        formatted: '5.6k',
+        percent: 0.6,
+        color: '#eab308',
+        label: 'Skills',
+      },
+      freeSpace: {
+        tokens: 973000,
+        formatted: '973.0k',
+        percent: 97.2,
+        color: '#404040',
+        label: 'Free space',
+      },
+    },
+  };
+
+  const { breakdown } = metrics;
+  const items = [
+    breakdown.messages,
+    breakdown.systemTools,
+    breakdown.systemPrompt,
+    breakdown.skills,
+    breakdown.freeSpace,
+  ];
+
+  return (
+    <div className='bg-[#1c1c1c] border border-[#2b2b2b] rounded-2xl overflow-hidden transition-all duration-200'>
+      {/* 头部标题与折叠开关 */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className='w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors'
+      >
+        <span className='font-semibold text-sm text-neutral-200 tracking-wide'>
+          Context
+        </span>
+        <div className='text-neutral-400'>
+          {isOpen ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
+        </div>
+      </button>
+
+      {/* 折叠内容 */}
+      {isOpen && (
+        <div className='px-4 pb-4 pt-1 flex flex-col gap-3.5'>
+          {/* 使用比例与容量指示 */}
+          <div className='flex items-center justify-between text-xs'>
+            <span className='font-medium text-neutral-200'>
+              {metrics.usedPercent}% used
+            </span>
+            <span className='text-neutral-400 font-mono'>
+              {metrics.usedTokensFormatted} / {metrics.totalLimitFormatted}
+            </span>
+          </div>
+
+          {/* 五彩分段进度条 */}
+          <div className='w-full h-2 rounded-full overflow-hidden flex bg-[#2e2e2e]'>
+            {items.map((item, idx) => {
+              if (item.percent <= 0) return null;
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    width: `${item.percent}%`,
+                    backgroundColor: item.color,
+                  }}
+                  title={`${item.label}: ${item.formatted} (${item.percent}%)`}
+                  className='h-full transition-all duration-300'
+                />
+              );
+            })}
+          </div>
+
+          {/* 细分项列表 */}
+          <div className='flex flex-col gap-2 pt-1'>
+            {items.map((item, idx) => (
+              <div
+                key={idx}
+                className='flex items-center justify-between text-xs text-neutral-300'
+              >
+                <div className='flex items-center gap-2.5'>
+                  <span
+                    className='w-2.5 h-2.5 rounded-sm flex-shrink-0'
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className='text-neutral-300 font-medium'>
+                    {item.label}
+                  </span>
+                </div>
+                <div className='flex items-center gap-3 font-mono text-[11px] text-neutral-400'>
+                  <span>{item.formatted}</span>
+                  <span className='w-11 text-right text-neutral-400'>
+                    {item.percent}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ContextCard;

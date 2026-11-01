@@ -69,7 +69,17 @@ function formatErrorContent(err: string) {
 
 export function useStreamChat() {
   const [isGenerating, setIsGenerating] = useState(false);
-  const { activeSessionId, messages, addMessage, appendMessageDelta, saveMessageToDb, updateMessageMetadata, truncateMessages } = useChatStore();
+  const {
+    activeSessionId,
+    messages,
+    addMessage,
+    appendMessageDelta,
+    saveMessageToDb,
+    updateMessageMetadata,
+    truncateMessages,
+    setContextMetrics,
+    refreshOutputs,
+  } = useChatStore();
 
   const sendMessage = useCallback(
     async (
@@ -143,12 +153,27 @@ export function useStreamChat() {
           (statusData: any) => {
             callbacks?.onToolStatus?.(statusData);
           },
+          (metrics: any) => {
+            setContextMetrics(metrics);
+          },
+          () => {
+            refreshOutputs(activeSessionId);
+          }
         );
       } else {
         setIsGenerating(false);
       }
     },
-    [activeSessionId, messages, addMessage, appendMessageDelta, saveMessageToDb, updateMessageMetadata],
+    [
+      activeSessionId,
+      messages,
+      addMessage,
+      appendMessageDelta,
+      saveMessageToDb,
+      updateMessageMetadata,
+      setContextMetrics,
+      refreshOutputs,
+    ],
   );
 
   const retryMessage = useCallback(
@@ -215,13 +240,29 @@ export function useStreamChat() {
           (statusData: any) => {
             callbacks?.onToolStatus?.(statusData);
           },
+          (metrics: any) => {
+            setContextMetrics(metrics);
+          },
+          () => {
+            refreshOutputs(activeSessionId);
+          }
         );
       } catch (err) {
         console.error("重试失败:", err);
         setIsGenerating(false);
       }
     },
-    [activeSessionId, messages, addMessage, appendMessageDelta, saveMessageToDb, updateMessageMetadata, truncateMessages],
+    [
+      activeSessionId,
+      messages,
+      addMessage,
+      appendMessageDelta,
+      saveMessageToDb,
+      updateMessageMetadata,
+      truncateMessages,
+      setContextMetrics,
+      refreshOutputs,
+    ],
   );
 
   return { isGenerating, sendMessage, retryMessage };

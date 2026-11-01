@@ -4,8 +4,6 @@
   "description": "MYN AI macOS Client",
   "main": "main.js",
   "scripts": {
-    "postinstall": "echo 'Native modules may need manual rebuild: npm run rebuild'",
-    "rebuild": "npx --cache /tmp/npm-cache --yes @electron/rebuild",
     "dev": "vite",
     "build": "vite build",
     "pack": "vite build && electron-builder --mac",
@@ -15,7 +13,6 @@
     "@langchain/community": "^1.1.29",
     "@langchain/core": "^1.1.48",
     "@langchain/openai": "^1.4.7",
-    "better-sqlite3": "^9.4.3",
     "cheerio": "^1.2.0",
     "langchain": "^1.4.4",
     "lucide-react": "^0.344.0",
@@ -25,7 +22,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
+    "@types/node": "^26.0.1",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.2.1",
@@ -46,6 +43,8 @@
       "dist/**/*",
       "main.js",
       "preload.js",
+      "services/**/*",
+      "utils/**/*",
       "package.json"
     ],
     "mac": {

@@ -289,21 +289,41 @@ const SettingsView = () => {
                   </p>
                 </div>
 
+                {/* Agent 配置文件目录 */}
+                <div className="bg-[#242424] border border-gray-700/50 rounded-xl p-6 shadow-sm">
+                  <h3 className="text-sm font-semibold text-gray-200 mb-4 border-b border-gray-700/50 pb-2">
+                    Agent 配置根目录 (~/.agnes/)
+                  </h3>
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-400">
+                      所有配置完全透明可读，包含 <code>config.json</code>（模型配置）、<code>mcp.json</code>（标准 MCP 服务器）、<code>skills/</code>（自定义技能）与 <code>memory/</code>（长期记忆）。
+                    </p>
+                    <div className="flex gap-3 items-center">
+                      <input
+                        type="text"
+                        readOnly
+                        value="~/.agnes/"
+                        className="flex-1 bg-[#1a1a1a] border border-gray-600 rounded-lg px-4 py-2 text-gray-300 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* 文件保存目录 */}
                 <div className="bg-[#242424] border border-gray-700/50 rounded-xl p-6 shadow-sm">
                   <h3 className="text-sm font-semibold text-gray-200 mb-4 border-b border-gray-700/50 pb-2">
-                    文件保存目录
+                    文件输出默认目录
                   </h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                        文件默认保存位置
+                        默认保存位置
                       </label>
                       <div className="flex gap-3">
                         <input
                           type="text"
                           readOnly
-                          value={savePath || "系统默认下载目录/AgnesAI"}
+                          value={savePath || "系统默认目录/AgnesAI"}
                           className="flex-1 bg-[#1a1a1a] border border-gray-600 rounded-lg px-4 py-2.5 text-gray-400 outline-none font-mono text-sm"
                         />
                         <button
@@ -314,7 +334,7 @@ const SettingsView = () => {
                         </button>
                       </div>
                       <p className="text-xs text-gray-500 mt-2">
-                        生成的图像和视频将自动静默保存至此目录中
+                        Agent 导出的文件与文档将默认保存至此目录
                       </p>
                     </div>
                   </div>
@@ -434,9 +454,7 @@ const SettingsView = () => {
                         onChange={(e) => setNewModelType(e.target.value)}
                         className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 outline-none focus:border-indigo-500 transition-all"
                       >
-                        <option value="chat">聊天模型 (Chat)</option>
-                        <option value="image">图像模型 (Image)</option>
-                        <option value="video">视频模型 (Video)</option>
+                        <option value="chat">对话与 Agent 模型 (Chat / Reasoning)</option>
                       </select>
                     </div>
                     <div>
@@ -535,20 +553,8 @@ const SettingsView = () => {
                               <td className="py-3 font-mono text-gray-200">{m.model_id}</td>
                               <td className="py-3">{m.name}</td>
                               <td className="py-3">
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] ${
-                                    m.type === "chat"
-                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                      : m.type === "image"
-                                        ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                                        : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                  }`}
-                                >
-                                  {m.type === "chat"
-                                    ? "聊天"
-                                    : m.type === "image"
-                                      ? "图像"
-                                      : "视频"}
+                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  Agent
                                 </span>
                               </td>
                               <td className="py-3 uppercase text-[10px] text-gray-400 font-bold">

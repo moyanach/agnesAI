@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "dashboard" | "chat" | "image" | "video" | "settings";
+export type View = "chat" | "settings";
 export type ThemeMode = "light" | "dark" | "system";
 
 interface AppState {
@@ -8,11 +8,15 @@ interface AppState {
   setActiveView: (view: View) => void;
   theme: ThemeMode;
   setTheme: (mode: ThemeMode) => void;
+  currentWorkDir: string | null;
+  setCurrentWorkDir: (dir: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  activeView: "dashboard",
+  activeView: "chat",
   setActiveView: (view) => set({ activeView: view }),
   theme: "system",
   setTheme: (mode) => set({ theme: mode }),
+  currentWorkDir: null,
+  setCurrentWorkDir: (dir) => set({ currentWorkDir: dir }),
 }));

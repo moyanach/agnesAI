@@ -16,28 +16,72 @@ export interface Session {
   workDir?: string;
 }
 
-interface ElectronAPI {
-  dbGetSessions: () => Promise<any[]>;
-  dbAddSession: (session: { id: string; title: string; model?: string }) => Promise<boolean>;
-  dbUpdateSessionTitle: (id: string, title: string) => Promise<boolean>;
-  dbDeleteSession: (id: string) => Promise<boolean>;
-  dbGetMessages: (sessionId: string) => Promise<any[]>;
-  dbAddMessage: (msg: { id: string; sessionId: string; role: string; content: string; metadata?: any }) => Promise<boolean>;
-  dbDeleteMessagesAfter: (sessionId: string, timestamp: number) => Promise<boolean>;
-  dbGetSessionWorkDir: (id: string) => Promise<string | null>;
-  dbUpdateSessionWorkDir: (id: string, workDir: string) => Promise<boolean>;
+export interface ContextBreakdownItem {
+  tokens: number;
+  formatted: string;
+  percent: number;
+  color: string;
+  label: string;
 }
 
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI & any;
-  }
+export interface ContextMetrics {
+  totalLimit: number;
+  totalLimitFormatted: string;
+  usedTokens: number;
+  usedTokensFormatted: string;
+  usedPercent: number;
+  breakdown: {
+    messages: ContextBreakdownItem;
+    systemTools: ContextBreakdownItem;
+    systemPrompt: ContextBreakdownItem;
+    skills: ContextBreakdownItem;
+    freeSpace: ContextBreakdownItem;
+  };
+}
+
+export interface SessionOutput {
+  id: string;
+  name: string;
+  filePath: string;
+  fileType: string;
+  createdAt: number;
+}
+
+export interface WorkspaceGitStatus {
+  isGit: boolean;
+  branch?: string;
+  insertions: number;
+  deletions: number;
+  modifiedFiles: Array<{ path: string; status: string }>;
+}
+
+export interface McpServerItem {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  description: string;
+  enabled: boolean;
+}
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+  tools: string[];
+  scope: string;
 }
 
 interface ChatState {
   sessions: Session[];
   activeSessionId: string | null;
   messages: Record<string, Message[]>;
+  contextMetrics: ContextMetrics | null;
+  outputs: SessionOutput[];
+  gitStatus: WorkspaceGitStatus | null;
+  mcpServers: McpServerItem[];
+  skills: SkillItem[];
+
   initStore: () => Promise<void>;
   addSession: () => Promise<void>;
   setActiveSession: (id: string) => Promise<void>;
@@ -54,30 +98,39 @@ interface ChatState {
   updateSessionModel: (sessionId: string, model: string) => Promise<void>;
   updateMessageMetadata: (sessionId: string, messageId: string, metadata: any) => void;
   truncateMessages: (sessionId: string, messageId: string) => Promise<void>;
+
+  setContextMetrics: (metrics: ContextMetrics | null) => void;
+  refreshOutputs: (sessionId: string) => Promise<void>;
+  refreshGitStatus: (workDir?: string | null) => Promise<void>;
+  refreshMcpAndSkills: (workDir?: string | null) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   activeSessionId: null,
   messages: {},
+  contextMetrics: null,
+  outputs: [],
+  gitStatus: null,
+  mcpServers: [],
+  skills: [],
 
   initStore: async () => {
     if (!window.electronAPI) return;
     try {
       const dbSessions = await window.electronAPI.dbGetSessions();
-      
+
       let activeId = null;
       const initialMessages: Record<string, Message[]> = {};
 
       if (dbSessions.length > 0) {
         activeId = dbSessions[0].id;
-        // 加载当前活跃会话的消息
         const dbMsgs = await window.electronAPI.dbGetMessages(activeId);
         initialMessages[activeId] = dbMsgs.map((m: any) => {
           let parsedMeta = null;
           if (m.metadata) {
             try {
-              parsedMeta = JSON.parse(m.metadata);
+              parsedMeta = typeof m.metadata === "string" ? JSON.parse(m.metadata) : m.metadata;
             } catch (e) {
               console.error("Failed to parse metadata in initStore:", e);
             }
@@ -86,20 +139,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
             id: m.id,
             role: m.role,
             content: m.content,
-            createdAt: m.created_at,
+            createdAt: m.created_at || m.createdAt,
             metadata: parsedMeta,
           };
         });
       } else {
-        // 如果没有会话，初始化创建一个默认会话
         const newId = crypto.randomUUID();
-        const defaultSession = { id: newId, title: "新的对话", updatedAt: Date.now(), model: "" };
+        const defaultSession = { id: newId, title: "新的 Agent 会话", updatedAt: Date.now(), model: "" };
         await window.electronAPI.dbAddSession(defaultSession);
-        
+
         const welcomeMsg = {
           id: "m1",
           role: "assistant" as const,
-          content: "你好！我是 Agnes AI，有什么可以帮你的？",
+          content: "你好！我是你的智能开发助手。你可以指定工作区目录，让我帮你分析代码、重构工程、排查错误或执行任务。",
           createdAt: Date.now(),
           metadata: null,
         };
@@ -111,7 +163,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           metadata: null,
         });
 
-        dbSessions.push({ ...defaultSession, search_enabled: 0 });
+        dbSessions.push(defaultSession);
         activeId = newId;
         initialMessages[newId] = [welcomeMsg];
       }
@@ -120,13 +172,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sessions: dbSessions.map((s: any) => ({
           id: s.id,
           title: s.title,
-          updatedAt: s.updated_at,
+          updatedAt: s.updated_at || s.updatedAt,
           model: s.model || "",
-          workDir: s.work_dir || undefined,
+          workDir: s.work_dir || s.workDir || undefined,
         })),
         activeSessionId: activeId,
         messages: initialMessages,
       });
+
+      if (activeId) {
+        const activeSession = dbSessions.find((s: any) => s.id === activeId);
+        get().refreshOutputs(activeId);
+        get().refreshGitStatus(activeSession?.work_dir || activeSession?.workDir);
+        get().refreshMcpAndSkills(activeSession?.work_dir || activeSession?.workDir);
+      }
     } catch (err) {
       console.error("初始化 ChatStore 失败:", err);
     }
@@ -135,16 +194,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   addSession: async () => {
     if (!window.electronAPI) return;
     const newId = crypto.randomUUID();
-    const newSession = { id: newId, title: "新的对话", updatedAt: Date.now(), model: "" };
+    const newSession = { id: newId, title: "新的 Agent 会话", updatedAt: Date.now(), model: "" };
 
     try {
       await window.electronAPI.dbAddSession(newSession);
-      
+
       set((state) => ({
         sessions: [newSession, ...state.sessions],
         activeSessionId: newId,
         messages: { ...state.messages, [newId]: [] },
+        outputs: [],
+        contextMetrics: null,
       }));
+
+      get().refreshMcpAndSkills(null);
     } catch (err) {
       console.error("创建会话失败:", err);
     }
@@ -152,9 +215,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setActiveSession: async (id) => {
     if (!window.electronAPI) return;
-    
-    // 如果没有加载过该会话的消息，则从数据库加载
+
     const state = get();
+    const targetSession = state.sessions.find((s) => s.id === id);
+    const workDir = targetSession?.workDir;
+
     if (!state.messages[id]) {
       try {
         const dbMsgs = await window.electronAPI.dbGetMessages(id);
@@ -162,7 +227,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           let parsedMeta = null;
           if (m.metadata) {
             try {
-              parsedMeta = JSON.parse(m.metadata);
+              parsedMeta = typeof m.metadata === "string" ? JSON.parse(m.metadata) : m.metadata;
             } catch (e) {
               console.error("Failed to parse metadata in setActiveSession:", e);
             }
@@ -171,7 +236,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             id: m.id,
             role: m.role,
             content: m.content,
-            createdAt: m.created_at,
+            createdAt: m.created_at || m.createdAt,
             metadata: parsedMeta,
           };
         });
@@ -185,6 +250,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } else {
       set({ activeSessionId: id });
     }
+
+    get().refreshOutputs(id);
+    get().refreshGitStatus(workDir);
+    get().refreshMcpAndSkills(workDir);
   },
 
   deleteSession: async (id) => {
@@ -197,12 +266,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           state.activeSessionId === id
             ? newSessions[0]?.id || null
             : state.activeSessionId;
-        
+
         const newMessages = { ...state.messages };
         delete newMessages[id];
 
-        return { sessions: newSessions, activeSessionId: newActive, messages: newMessages };
+        return {
+          sessions: newSessions,
+          activeSessionId: newActive,
+          messages: newMessages,
+        };
       });
+
+      const nextActiveId = get().activeSessionId;
+      if (nextActiveId) {
+        get().setActiveSession(nextActiveId);
+      }
     } catch (err) {
       console.error("删除会话失败:", err);
     }
@@ -210,17 +288,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   updateSessionTitle: async (id, title) => {
     if (!window.electronAPI) return;
-
-    const nextTitle = title.trim();
-    if (!nextTitle) return;
-
     try {
-      const updated = await window.electronAPI.dbUpdateSessionTitle(id, nextTitle);
-      if (!updated) return;
-
+      await window.electronAPI.dbUpdateSessionTitle(id, title);
       set((state) => ({
         sessions: state.sessions.map((s) =>
-          s.id === id ? { ...s, title: nextTitle } : s,
+          s.id === id ? { ...s, title, updatedAt: Date.now() } : s
         ),
       }));
     } catch (err) {
@@ -230,16 +302,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSessionWorkDir: async (id, workDir) => {
     if (!window.electronAPI) return;
-
     try {
-      const updated = await window.electronAPI.dbUpdateSessionWorkDir(id, workDir || "");
-      if (!updated) return;
-
+      await window.electronAPI.dbUpdateSessionWorkDir(id, workDir || "");
       set((state) => ({
         sessions: state.sessions.map((s) =>
-          s.id === id ? { ...s, workDir: workDir || undefined } : s,
+          s.id === id ? { ...s, workDir: workDir || undefined, updatedAt: Date.now() } : s
         ),
       }));
+      get().refreshGitStatus(workDir);
+      get().refreshMcpAndSkills(workDir);
     } catch (err) {
       console.error("更新会话工作目录失败:", err);
     }
@@ -247,11 +318,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addMessage: async (sessionId, message, skipDb = false) => {
     set((state) => {
-      const sessionMessages = state.messages[sessionId] || [];
+      const currentMsgs = state.messages[sessionId] || [];
       return {
         messages: {
           ...state.messages,
-          [sessionId]: [...sessionMessages, message],
+          [sessionId]: [...currentMsgs, message],
         },
       };
     });
@@ -265,27 +336,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: message.content,
           metadata: message.metadata,
         });
-        
-        // 更新会话列表中的时间
-        set((state) => ({
-          sessions: state.sessions.map((s) =>
-            s.id === sessionId ? { ...s, updatedAt: Date.now() } : s
-          ).sort((a, b) => b.updatedAt - a.updatedAt),
-        }));
       } catch (err) {
-        console.error("写入消息到 SQLite 失败:", err);
+        console.error("持久化消息失败:", err);
       }
     }
   },
 
-  appendMessageDelta: (sessionId, messageId, delta) =>
+  appendMessageDelta: (sessionId, messageId, delta) => {
     set((state) => {
-      const sessionMsgs = state.messages[sessionId] || [];
-      const newMsgs = sessionMsgs.map((m) =>
-        m.id === messageId ? { ...m, content: m.content + delta } : m
-      );
-      return { messages: { ...state.messages, [sessionId]: newMsgs } };
-    }),
+      const currentMsgs = state.messages[sessionId] || [];
+      const msgIndex = currentMsgs.findIndex((m) => m.id === messageId);
+      if (msgIndex === -1) return state;
+
+      const updatedMsgs = [...currentMsgs];
+      const targetMsg = updatedMsgs[msgIndex];
+      updatedMsgs[msgIndex] = {
+        ...targetMsg,
+        content: targetMsg.content + delta,
+      };
+
+      return {
+        messages: {
+          ...state.messages,
+          [sessionId]: updatedMsgs,
+        },
+      };
+    });
+  },
 
   saveMessageToDb: async (sessionId, message) => {
     if (!window.electronAPI) return;
@@ -298,61 +375,105 @@ export const useChatStore = create<ChatState>((set, get) => ({
         metadata: message.metadata,
       });
     } catch (err) {
-      console.error("异步保存助手消息到 SQLite 失败:", err);
+      console.error("保存消息到存储失败:", err);
     }
   },
 
   updateSessionModel: async (sessionId, model) => {
-    if (!window.electronAPI) return;
-    try {
-      const session = get().sessions.find((s) => s.id === sessionId);
-      if (session) {
-        const updated = { ...session, model };
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId ? { ...s, model } : s
+      ),
+    }));
+    if (window.electronAPI) {
+      try {
         await window.electronAPI.dbAddSession({
-          id: session.id,
-          title: session.title,
-          model: model,
+          id: sessionId,
+          title: get().sessions.find((s) => s.id === sessionId)?.title || "对话",
+          model,
         });
-        set((state) => ({
-          sessions: state.sessions.map((s) => (s.id === sessionId ? updated : s)),
-        }));
+      } catch (err) {
+        console.error("更新模型持久化失败:", err);
       }
-    } catch (err) {
-      console.error("更新会话模型失败:", err);
     }
   },
 
-  updateMessageMetadata: (sessionId, messageId, metadata) =>
+  updateMessageMetadata: (sessionId, messageId, metadata) => {
     set((state) => {
-      const sessionMsgs = state.messages[sessionId] || [];
-      const newMsgs = sessionMsgs.map((m) =>
-        m.id === messageId ? { ...m, metadata: metadata && metadata.length > 0 ? metadata : null } : m
-      );
-      return { messages: { ...state.messages, [sessionId]: newMsgs } };
-    }),
+      const currentMsgs = state.messages[sessionId] || [];
+      const msgIndex = currentMsgs.findIndex((m) => m.id === messageId);
+      if (msgIndex === -1) return state;
+
+      const updatedMsgs = [...currentMsgs];
+      updatedMsgs[msgIndex] = {
+        ...updatedMsgs[msgIndex],
+        metadata,
+      };
+
+      return {
+        messages: {
+          ...state.messages,
+          [sessionId]: updatedMsgs,
+        },
+      };
+    });
+  },
 
   truncateMessages: async (sessionId, messageId) => {
-    const state = get();
-    const sessionMessages = state.messages[sessionId] || [];
-    const index = sessionMessages.findIndex((m) => m.id === messageId);
-    if (index === -1) return;
+    const currentMsgs = get().messages[sessionId] || [];
+    const targetMsg = currentMsgs.find((m) => m.id === messageId);
+    if (!targetMsg) return;
 
-    const targetMsg = sessionMessages[index];
-    const keptMsgs = sessionMessages.slice(0, index + 1);
-
-    if (window.electronAPI && window.electronAPI.dbDeleteMessagesAfter) {
-      try {
-        await window.electronAPI.dbDeleteMessagesAfter(sessionId, targetMsg.createdAt);
-      } catch (err) {
-        console.error("Failed to delete messages after timestamp:", err);
-      }
-    }
+    const filtered = currentMsgs.filter((m) => m.createdAt <= targetMsg.createdAt);
 
     set((state) => ({
       messages: {
         ...state.messages,
-        [sessionId]: keptMsgs,
+        [sessionId]: filtered,
       },
     }));
+
+    if (window.electronAPI) {
+      try {
+        await window.electronAPI.dbDeleteMessagesAfter(sessionId, targetMsg.createdAt);
+      } catch (err) {
+        console.error("截断消息失败:", err);
+      }
+    }
+  },
+
+  setContextMetrics: (metrics) => set({ contextMetrics: metrics }),
+
+  refreshOutputs: async (sessionId) => {
+    if (!window.electronAPI?.getSessionOutputs || !sessionId) return;
+    try {
+      const outs = await window.electronAPI.getSessionOutputs(sessionId);
+      set({ outputs: outs || [] });
+    } catch (err) {
+      console.error("刷新 Outputs 失败:", err);
+    }
+  },
+
+  refreshGitStatus: async (workDir) => {
+    if (!window.electronAPI?.getWorkspaceGitStatus) return;
+    try {
+      const status = await window.electronAPI.getWorkspaceGitStatus(workDir || null);
+      set({ gitStatus: status || null });
+    } catch (err) {
+      console.error("刷新 Git 状态失败:", err);
+    }
+  },
+
+  refreshMcpAndSkills: async (workDir) => {
+    if (!window.electronAPI) return;
+    try {
+      const [mcps, skills] = await Promise.all([
+        window.electronAPI.getMcpServers ? window.electronAPI.getMcpServers(workDir) : [],
+        window.electronAPI.getSkills ? window.electronAPI.getSkills(workDir) : [],
+      ]);
+      set({ mcpServers: mcps || [], skills: skills || [] });
+    } catch (err) {
+      console.error("刷新 MCP 和 Skills 失败:", err);
+    }
   },
 }));
